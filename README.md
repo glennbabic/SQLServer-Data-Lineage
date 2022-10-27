@@ -390,17 +390,17 @@ with
 generation AS (
     SELECT parentObjectId
                     ,childObjectId
-                            ,cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) + ' <-- '+cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) AS descendants
+                            ,cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) AS descendants
     FROM dbo.tblObjDeps
     WHERE parentObjectId = object_id(@objectName)
     UNION ALL
     SELECT d.parentObjectId
                     ,d.childObjectId
-                            ,cast(OBJECT_SCHEMA_NAME(d.childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.childObjectId) as varchar(max)) +' <-- '+descendants AS descendants
+                            ,cast(OBJECT_SCHEMA_NAME(d.childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.childObjectId) as varchar(max)) +' <- '+descendants AS descendants
     FROM dbo.tblObjDeps d
               JOIN generation g ON g.childObjectId = d.parentObjectId
 )
-SELECT descendants as [CHILD <-- PARENT]
+SELECT descendants as [CHILD <- PARENT]
 FROM generation
 order by descendants
 OPTION (MAXRECURSION 10000);
@@ -414,17 +414,17 @@ with
 generation AS (
     SELECT parentObjectId
                     ,childObjectId
-                              ,cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) + ' <-- '+cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) AS parentage
+                              ,cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) AS parentage
     FROM dbo.tblObjDeps
     WHERE childObjectId = object_id(@objectName)
     UNION ALL
     SELECT d.parentObjectId
                     ,d.childObjectId
-                              ,cast(OBJECT_SCHEMA_NAME(d.parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.parentObjectId) as varchar(max)) +' <-- '+parentage AS parentage
+                              ,cast(OBJECT_SCHEMA_NAME(d.parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.parentObjectId) as varchar(max)) +' <- '+parentage AS parentage
     FROM dbo.tblObjDeps d
               JOIN generation g ON g.parentObjectId = d.childObjectId
 )
-SELECT parentage as [PARENT <-- CHILD]
+SELECT parentage as [PARENT <- CHILD]
 FROM generation
 OPTION (MAXRECURSION 10000);
 ```
