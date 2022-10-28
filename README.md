@@ -346,7 +346,7 @@ no_comment_blocks as
          cross apply string_split(REPLACE(txt,'--',char(1)),char(1), 1)) a
    group by object_id
 )
-insert into dbo.tblObjDeps (parentObjectId, childObjectId)
+insert into Analyse.tblObjDeps (parentObjectId, childObjectId)
 select distinct
        iif(relType = 'PARENT', relObjectId, objectId) as parentObjectId
       ,iif(relType = 'CHILD' , relObjectId, objectId) as childObjectId
@@ -354,10 +354,9 @@ from (select objectId, relObjectId, relType, row_number() over (partition by obj
       from (select distinct
                    objectId
                   ,relObjectId
-                  ,iif(preText like '% DELETE FROM' or preText like '% TRUNCATE TABLE', 'PREP'
-                      ,iif(preText like '% JOIN' or preText like '% FROM' or preText like '% EXEC' or preText like '% (', 'PARENT'
-                          ,iif(preText like '% MERGE' or preText like '% INTO' or preText like '% UPDATE' or preText like '% TABLE' or preText like '% VIEW', 'CHILD'
-                              ,'SKIP'))) as relType
+                  ,iif(preText like '% DELETE FROM' or preText like '% DELETE' or preText like '% MERGE' or preText like '% INTO' or preText like '% INSERT' or preText like '% UPDATE' or preText like '% TABLE' or preText like '% VIEW', 'CHILD'
+                      ,iif(preText like '% JOIN' or preText like '% FROM' or preText like '% EXEC' or preText like '% (' or preText like '% ,', 'PARENT'
+                          ,null)) as relType
             from (select objectId
                         ,rtrim(left(prev,greatest(len(prev)-len(relSchemaName)-1,0))) as preText
                         ,object_id(relSchemaName+'.'+relObjectName) as relObjectId
@@ -370,14 +369,14 @@ from (select objectId, relObjectId, relType, row_number() over (partition by obj
                                     ,left(val, greatest(charindex(' ', val)-1,0)) as relObjectName
                               from (select object_id as objectId, ordinal as row, value as val
                                     from   no_comment_lines
-                                    cross apply string_split(REPLACE(REPLACE(REPLACE(txt,char(9),' '),char(13)+char(10),' '),'(',' ( '),'.', 1)
+                                    cross apply string_split(REPLACE(REPLACE(REPLACE(REPLACE(txt,char(9),' '),char(13)+char(10),' '),'(',' ( '),',',' , '),'.', 1)
                                    ) a
                              ) b
                        ) c
                  ) d
             where relObjectId > 0 and relObjectId != objectId
            ) e
-      where relType in ('CHILD','PARENT')
+      where relType is not null
      ) f
 where ord = 1;
 ```
@@ -389,20 +388,19 @@ where ord = 1;
 with
 generation AS (
     SELECT parentObjectId
-                    ,childObjectId
-                            ,cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) AS descendants
+          ,childObjectId
+          ,cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) AS descendants
     FROM dbo.tblObjDeps
     WHERE parentObjectId = object_id(@objectName)
     UNION ALL
     SELECT d.parentObjectId
-                    ,d.childObjectId
-                            ,cast(OBJECT_SCHEMA_NAME(d.childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.childObjectId) as varchar(max)) +' <- '+descendants AS descendants
+          ,d.childObjectId
+          ,cast(OBJECT_SCHEMA_NAME(d.childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.childObjectId) as varchar(max)) +' <- '+descendants AS descendants
     FROM dbo.tblObjDeps d
-              JOIN generation g ON g.childObjectId = d.parentObjectId
+    JOIN generation g ON g.childObjectId = d.parentObjectId
 )
 SELECT descendants as [CHILD <- PARENT]
 FROM generation
-order by descendants
 OPTION (MAXRECURSION 10000);
 ```
 
@@ -413,16 +411,16 @@ OPTION (MAXRECURSION 10000);
 with
 generation AS (
     SELECT parentObjectId
-                    ,childObjectId
-                              ,cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) AS parentage
+          ,childObjectId
+          ,cast(OBJECT_SCHEMA_NAME(parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(parentObjectId) as varchar(max)) + ' <- '+cast(OBJECT_SCHEMA_NAME(childObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(childObjectId) as varchar(max)) AS parentage
     FROM dbo.tblObjDeps
     WHERE childObjectId = object_id(@objectName)
     UNION ALL
     SELECT d.parentObjectId
-                    ,d.childObjectId
-                              ,cast(OBJECT_SCHEMA_NAME(d.parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.parentObjectId) as varchar(max)) +' <- '+parentage AS parentage
+          ,d.childObjectId
+          ,cast(OBJECT_SCHEMA_NAME(d.parentObjectId) as varchar(max))+'.'+cast(OBJECT_NAME(d.parentObjectId) as varchar(max)) +' <- '+parentage AS parentage
     FROM dbo.tblObjDeps d
-              JOIN generation g ON g.parentObjectId = d.childObjectId
+    JOIN generation g ON g.parentObjectId = d.childObjectId
 )
 SELECT parentage as [PARENT <- CHILD]
 FROM generation
